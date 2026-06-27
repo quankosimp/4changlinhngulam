@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 
 Category = Literal["security", "malware", "dead_code", "refactor"]
@@ -161,6 +161,8 @@ class RepoGuardReport:
     findings: list[Finding]
     patches: list[PatchProposal] = field(default_factory=list)
     verification: list[VerificationResult] = field(default_factory=list)
+    fix_rounds: list[dict] = field(default_factory=list)
+    fix_metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -168,4 +170,6 @@ class RepoGuardReport:
             "findings": [item.to_dict() for item in self.findings],
             "patches": [item.to_dict() for item in self.patches],
             "verification": [item.to_dict() for item in self.verification],
+            "fix_rounds": self.fix_rounds,
+            "fix_metadata": self.fix_metadata,
         }

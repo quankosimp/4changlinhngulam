@@ -4,11 +4,13 @@ import ast
 from pathlib import Path
 
 from repoguard.codegraph_client import CodeGraphClient, CodeGraphUnavailable
+from repoguard.graph_exporter import build_graph, graph_excerpt
 from repoguard.models import Finding
 
 
 def enrich_findings(repo_path: str, findings: list[Finding]) -> list[Finding]:
     client = CodeGraphClient(repo_path)
+    export = build_graph(repo_path, findings=findings, require_codegraph=False)
     enriched = []
     for finding in findings:
         symbol = _guess_symbol(Path(repo_path), finding.file, finding.line)
@@ -23,6 +25,11 @@ def enrich_findings(repo_path: str, findings: list[Finding]) -> list[Finding]:
             }
         except CodeGraphUnavailable as exc:
             context = _fallback_context(Path(repo_path), finding, symbol, str(exc))
+        context = {
+            **finding.codegraph_context,
+            **context,
+            "graph_excerpt": graph_excerpt(export, finding.file, symbol),
+        }
         enriched.append(finding.with_codegraph_context(context))
     return enriched
 

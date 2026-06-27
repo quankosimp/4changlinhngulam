@@ -1,55 +1,369 @@
 {
-  "version": 1,
-  "name": "repoguard-mvp-corpus",
+  "version": 2,
+  "name": "repoguard-system-benchmark",
+  "description": "Expanded benchmark for scanner, codegraph, patcher and verifier coverage.",
   "cases": [
     {
       "repo_id": "base64_exec",
       "path": "corpus/malicious/base64_exec.py",
       "label": "malicious",
       "category": "malware",
-      "expected_rules": ["PY-DECODE-EXEC"]
+      "stage": "scan",
+      "expected_rules": ["PY-DECODE-EXEC"],
+      "expected_findings": [
+        {
+          "rule_id": "PY-DECODE-EXEC",
+          "target_region": {
+            "file": "base64_exec.py",
+            "start_line": 6,
+            "end_line": 6
+          },
+          "min_severity": "high",
+          "behavior_path_contains": [
+            "SOURCE: encoded string",
+            "TRANSFORM: base64/hex decode",
+            "SINK: exec"
+          ]
+        }
+      ],
+      "expected_patch": {
+        "required": true,
+        "mode": "apply",
+        "target_rule": "PY-DECODE-EXEC",
+        "expected_action": "quarantine",
+        "max_rounds": 3,
+        "min_severity": "high",
+        "expected_verification": {
+          "status": "patched",
+          "scanner_passed": true
+        }
+      }
     },
     {
       "repo_id": "env_exfil",
       "path": "corpus/malicious/env_exfil.py",
       "label": "malicious",
       "category": "security",
-      "expected_rules": ["PY-ENV-EXFIL"]
+      "stage": "scan",
+      "expected_rules": ["PY-ENV-EXFIL"],
+      "expected_findings": [
+        {
+          "rule_id": "PY-ENV-EXFIL",
+          "target_region": {
+            "file": "env_exfil.py",
+            "start_line": 7,
+            "end_line": 7
+          },
+          "min_severity": "high",
+          "behavior_path_contains": [
+            "SOURCE: os.environ/os.getenv",
+            "SINK: requests.post"
+          ]
+        }
+      ],
+      "expected_patch": {
+        "required": true,
+        "mode": "apply",
+        "target_rule": "PY-ENV-EXFIL",
+        "expected_action": "quarantine",
+        "max_rounds": 3,
+        "min_severity": "high",
+        "expected_verification": {
+          "status": "patched",
+          "scanner_passed": true
+        }
+      }
     },
     {
       "repo_id": "dropper",
       "path": "corpus/malicious/dropper.py",
       "label": "malicious",
       "category": "malware",
-      "expected_rules": ["PY-DROPPER", "PY-SHELL-INJECTION"]
+      "stage": "scan",
+      "expected_rules": ["PY-DROPPER", "PY-SHELL-INJECTION"],
+      "expected_findings": [
+        {
+          "rule_id": "PY-DROPPER",
+          "target_region": {
+            "file": "dropper.py",
+            "start_line": 10,
+            "end_line": 10
+          },
+          "min_severity": "high"
+        },
+        {
+          "rule_id": "PY-SHELL-INJECTION",
+          "target_region": {
+            "file": "dropper.py",
+            "start_line": 10,
+            "end_line": 10
+          },
+          "min_severity": "high"
+        }
+      ]
     },
     {
       "repo_id": "shell_injection",
       "path": "corpus/vulnerable/shell_injection.py",
       "label": "malicious",
       "category": "security",
-      "expected_rules": ["PY-SHELL-INJECTION"]
+      "stage": "scan",
+      "expected_rules": ["PY-SHELL-INJECTION"],
+      "expected_findings": [
+        {
+          "rule_id": "PY-SHELL-INJECTION",
+          "target_region": {
+            "file": "shell_injection.py",
+            "start_line": 5,
+            "end_line": 5
+          },
+          "min_severity": "high"
+        }
+      ]
     },
     {
       "repo_id": "pickle_network",
       "path": "corpus/vulnerable/pickle_network.py",
       "label": "malicious",
       "category": "malware",
-      "expected_rules": ["PY-PICKLE-NETWORK"]
+      "stage": "scan",
+      "expected_rules": ["PY-PICKLE-NETWORK"],
+      "expected_findings": [
+        {
+          "rule_id": "PY-PICKLE-NETWORK",
+          "target_region": {
+            "file": "pickle_network.py",
+            "start_line": 7,
+            "end_line": 7
+          },
+          "min_severity": "high"
+        }
+      ]
     },
     {
       "repo_id": "dead_code",
       "path": "corpus/dead_code",
       "label": "malicious",
       "category": "dead_code",
-      "expected_rules": ["PY-UNUSED-FUNCTION", "PY-UNUSED-CLASS"]
+      "stage": "scan",
+      "expected_rules": ["PY-UNUSED-FUNCTION", "PY-UNUSED-CLASS"],
+      "expected_findings": [
+        {
+          "rule_id": "PY-UNUSED-FUNCTION",
+          "target_region": {
+            "file": "unused_function.py",
+            "start_line": 5,
+            "end_line": 6
+          },
+          "min_severity": "low"
+        },
+        {
+          "rule_id": "PY-UNUSED-CLASS",
+          "target_region": {
+            "file": "unused_class.py",
+            "start_line": 6,
+            "end_line": 8
+          },
+          "min_severity": "low"
+        }
+      ],
+      "include_dead_code": true
     },
     {
-      "repo_id": "benign",
+      "repo_id": "benign_corpus",
       "path": "corpus/benign",
       "label": "benign",
       "category": "benign",
+      "stage": "scan",
       "expected_rules": []
+    },
+    {
+      "repo_id": "benign_comments",
+      "path": "e2e_corpus/synthetic_benign/b005_comments_only",
+      "label": "benign",
+      "category": "benign",
+      "stage": "scan",
+      "expected_rules": []
+    },
+    {
+      "repo_id": "benign_json",
+      "path": "e2e_corpus/synthetic_benign/b004_json_serializer",
+      "label": "benign",
+      "category": "benign",
+      "stage": "scan",
+      "expected_rules": []
+    },
+    {
+      "repo_id": "benign_http",
+      "path": "e2e_corpus/synthetic_benign/b002_http_client",
+      "label": "benign",
+      "category": "benign",
+      "stage": "scan",
+      "expected_rules": []
+    },
+    {
+      "repo_id": "benign_git_status",
+      "path": "e2e_corpus/synthetic_benign/b001_cli_runner",
+      "label": "benign",
+      "category": "benign",
+      "stage": "scan",
+      "expected_rules": []
+    },
+    {
+      "repo_id": "benign_env",
+      "path": "e2e_corpus/synthetic_benign/b003_env_config",
+      "label": "benign",
+      "category": "benign",
+      "stage": "scan",
+      "expected_rules": []
+    },
+    {
+      "repo_id": "legacy_chain_dropper_graph",
+      "path": "e2e_corpus/graph_chains/g001_dropper_chain",
+      "label": "malicious",
+      "category": "graph_dropper",
+      "stage": "graph",
+      "expected_rules": [],
+      "expected_codegraph": {
+        "required": true,
+        "expected_rules": ["PY-GRAPH-DROPPER"],
+        "required_call_paths": [
+          ["downloader.py:fetch_stage", "writer.py:write_stage", "runner.py:run_stage"]
+        ],
+        "require_cli": false
+      },
+      "expected_graph_export": {
+        "required": true,
+        "format": "both",
+        "require_cli": false
+      }
+    },
+    {
+      "repo_id": "synthetic_base64_exec",
+      "path": "e2e_corpus/synthetic_malicious/m001_base64_exec/app.py",
+      "label": "malicious",
+      "category": "malware",
+      "stage": "scan",
+      "expected_rules": ["PY-DECODE-EXEC"],
+      "expected_findings": [
+        {
+          "rule_id": "PY-DECODE-EXEC",
+          "target_region": {
+            "file": "app.py",
+            "start_line": 5,
+            "end_line": 5
+          },
+          "min_severity": "high"
+        }
+      ]
+    },
+    {
+      "repo_id": "synthetic_hex_eval",
+      "path": "e2e_corpus/synthetic_malicious/m002_hex_eval/app.py",
+      "label": "malicious",
+      "category": "malware",
+      "stage": "scan",
+      "expected_rules": ["PY-DECODE-EXEC"],
+      "expected_findings": [
+        {
+          "rule_id": "PY-DECODE-EXEC",
+          "target_region": {
+            "file": "app.py",
+            "start_line": 5,
+            "end_line": 5
+          },
+          "min_severity": "high"
+        }
+      ]
+    },
+    {
+      "repo_id": "synthetic_pickle_network",
+      "path": "e2e_corpus/synthetic_malicious/m005_pickle_network/app.py",
+      "label": "malicious",
+      "category": "malware",
+      "stage": "scan",
+      "expected_rules": ["PY-PICKLE-NETWORK"],
+      "expected_findings": [
+        {
+          "rule_id": "PY-PICKLE-NETWORK",
+          "target_region": {
+            "file": "app.py",
+            "start_line": 6,
+            "end_line": 6
+          },
+          "min_severity": "high"
+        }
+      ]
+    },
+    {
+      "repo_id": "synthetic_env_exfil",
+      "path": "e2e_corpus/synthetic_malicious/m007_env_exfil/app.py",
+      "label": "malicious",
+      "category": "security",
+      "stage": "scan",
+      "expected_rules": ["PY-ENV-EXFIL"],
+      "expected_findings": [
+        {
+          "rule_id": "PY-ENV-EXFIL",
+          "target_region": {
+            "file": "app.py",
+            "start_line": 6,
+            "end_line": 6
+          },
+          "min_severity": "high"
+        }
+      ]
+    },
+    {
+      "repo_id": "synthetic_command_spawn",
+      "path": "e2e_corpus/synthetic_malicious/m008_command_spawn/app.py",
+      "label": "malicious",
+      "category": "security",
+      "stage": "scan",
+      "expected_rules": ["PY-SHELL-INJECTION"],
+      "expected_findings": [
+        {
+          "rule_id": "PY-SHELL-INJECTION",
+          "target_region": {
+            "file": "app.py",
+            "start_line": 5,
+            "end_line": 5
+          },
+          "min_severity": "medium"
+        }
+      ]
+    },
+    {
+      "repo_id": "future_stage2_import",
+      "path": "e2e_corpus/graph_chains/g002_stage2_import",
+      "label": "malicious",
+      "category": "future_graph",
+      "stage": "graph",
+      "expected_rules": [],
+      "expected_codegraph": {
+        "required": false,
+        "expected_rules": ["PY-GRAPH-STAGE2-IMPORT"],
+        "required_call_paths": [
+          ["builder.py:write_plugin", "loader.py:load_plugin"]
+        ],
+        "require_cli": false
+      }
+    },
+    {
+      "repo_id": "future_ctypes_loader",
+      "path": "e2e_corpus/graph_chains/g003_ctypes_loader",
+      "label": "malicious",
+      "category": "future_graph",
+      "stage": "graph",
+      "expected_rules": [],
+      "expected_codegraph": {
+        "required": false,
+        "expected_rules": ["PY-GRAPH-CTYPES-LOAD"],
+        "required_call_paths": [
+          ["native_loader.py:load_extension"]
+        ],
+        "require_cli": false
+      }
     }
   ]
 }
