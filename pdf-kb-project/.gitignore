@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+
+# Node
+node_modules/
+.next/
+out/
+
+# Local app storage
+storage/
+backend/storage/
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
