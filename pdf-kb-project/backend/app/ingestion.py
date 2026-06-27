@@ -519,6 +519,9 @@ def run_ingestion_job(
         if len(embeddings) != len(chunks):
             raise RuntimeError("Embedding count does not match chunk count.")
 
+        notes = _build_chapter_notes(chunks, outline)
+        _write_note_files(document_id, notes, cfg)
+
         db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).delete()
         db.query(DocumentChapter).filter(DocumentChapter.document_id == document_id).delete()
         for index, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=True)):
@@ -535,7 +538,7 @@ def run_ingestion_job(
                     embedding=json.dumps(embedding),
                 )
             )
-        for chapter_index, title, page_start, page_end, markdown in _build_chapter_notes(chunks, outline):
+        for chapter_index, title, page_start, page_end, markdown in notes:
             db.add(
                 DocumentChapter(
                     document_id=document_id,
