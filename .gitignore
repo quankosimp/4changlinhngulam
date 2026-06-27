@@ -1,6 +1,62 @@
-.venv/
-.env
+# Local tool backups
+.vibecode-backup*/
 
-benchmark_reports/
+# Node / JavaScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+pnpm-lock.yaml
+yarn.lock
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python / ML helpers
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyd
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+*.egg-info/
+
+# Generated outputs
+/report.json
+benchmark_reports/
+
+# Streamlit local secrets
+.streamlit/secrets.toml
+
+# TypeScript / tooling
+.cache/
+*.local
+
+# IDE / editor
+.idea/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

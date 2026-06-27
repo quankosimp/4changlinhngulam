@@ -20,7 +20,7 @@ Cả 3 thống nhất 1 schema + 1 interface ngay phút đầu để code song s
 
 **Repo layout (Python):**
 ```
-malguard/
+repoguard/
   models.py            # CONTRACT: Finding dataclass + Severity + to_dict()  ← viết CHUNG đầu tiên
   scanner.py           # walk repo → gọi rules → gom List[Finding]            (A sở hữu)
   rules/
@@ -29,7 +29,7 @@ malguard/
   codegraph_client.py  # B: wrap CLI/MCP codegraph (subprocess + --json)
   agent.py             # B: NL query → codegraph_explore → lọc rule
   report.py            # C: xuất JSON + bảng CLI
-  cli.py               # entrypoint: python -m malguard scan <path> [--json]
+  cli.py               # entrypoint: python -m repoguard scan <path> [--json]
   dashboard/app.py     # C: Streamlit (đọc report JSON, hiển thị)
 tests/corpus/{malicious,benign}/   # C: bộ mẫu test
 ```
@@ -69,7 +69,7 @@ Rule ưu tiên (signal cao, nhanh):
 6. `subprocess`/`os.system` với chuỗi nối/f-string (command injection)
 7. `os.environ`/`getenv` → `requests.post` (exfil credential)
 
-Mỗi rule gắn `confidence` (vd: cùng dòng có cả `base64`+`exec` → high). `cli.py`: `python -m malguard scan <path> [--json]` in bảng + ghi `report.json`.
+Mỗi rule gắn `confidence` (vd: cùng dòng có cả `base64`+`exec` → high). `cli.py`: `python -m repoguard scan <path> [--json]` in bảng + ghi `report.json`.
 
 ---
 
@@ -113,10 +113,10 @@ Mỗi rule gắn `confidence` (vd: cùng dòng có cả `base64`+`exec` → high
 
 ## Verification (chứng minh chạy được)
 
-1. `python -m malguard scan tests/corpus/malicious --json > report.json` → phải bắt ≥8/10 mẫu malicious.
+1. `python -m repoguard scan tests/corpus/malicious --json > report.json` → phải bắt ≥8/10 mẫu malicious.
 2. Chạy trên `tests/corpus/benign` → false-positive thấp (lý tưởng 0–2).
 3. `codegraph status` báo index OK; `graph_rules` trả `call_path` ≥1 mẫu dropper.
-4. Mở dashboard Streamlit (`streamlit run malguard/dashboard/app.py`) → đọc `report.json`, hiện badge + snippet + call-path.
+4. Mở dashboard Streamlit (`streamlit run repoguard/dashboard/app.py`) → đọc `report.json`, hiện badge + snippet + call-path.
 5. NL agent: hỏi "find base64 decode then exec" → trả đúng file/line như rule #1 (nếu kịp; nếu không, dùng truy vấn cố định).
 
 ## Nguồn tham khảo nhanh (mượn pattern để đi nhanh)

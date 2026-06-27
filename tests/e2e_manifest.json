@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "name": "malguard-e2e-corpus",
+  "name": "repoguard-e2e-corpus",
   "description": "End-to-end repo/package corpus for scanner, graph rules, agent, report, and dashboard checks.",
   "cases": [
     {
