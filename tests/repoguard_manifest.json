@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "repoguard-mvp-corpus",
+  "cases": [
+    {
+      "repo_id": "base64_exec",
+      "path": "corpus/malicious/base64_exec.py",
+      "label": "malicious",
+      "category": "malware",
+      "expected_rules": ["PY-DECODE-EXEC"]
+    },
+    {
+      "repo_id": "env_exfil",
+      "path": "corpus/malicious/env_exfil.py",
+      "label": "malicious",
+      "category": "security",
+      "expected_rules": ["PY-ENV-EXFIL"]
+    },
+    {
+      "repo_id": "dropper",
+      "path": "corpus/malicious/dropper.py",
+      "label": "malicious",
+      "category": "malware",
+      "expected_rules": ["PY-DROPPER", "PY-SHELL-INJECTION"]
+    },
+    {
+      "repo_id": "shell_injection",
+      "path": "corpus/vulnerable/shell_injection.py",
+      "label": "malicious",
+      "category": "security",
+      "expected_rules": ["PY-SHELL-INJECTION"]
+    },
+    {
+      "repo_id": "pickle_network",
+      "path": "corpus/vulnerable/pickle_network.py",
+      "label": "malicious",
+      "category": "malware",
+      "expected_rules": ["PY-PICKLE-NETWORK"]
+    },
+    {
+      "repo_id": "dead_code",
+      "path": "corpus/dead_code",
+      "label": "malicious",
+      "category": "dead_code",
+      "expected_rules": ["PY-UNUSED-FUNCTION", "PY-UNUSED-CLASS"]
+    },
+    {
+      "repo_id": "benign",
+      "path": "corpus/benign",
+      "label": "benign",
+      "category": "benign",
+      "expected_rules": []
+    }
+  ]
+}

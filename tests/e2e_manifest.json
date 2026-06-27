@@ -1,0 +1,283 @@
+{
+  "version": 1,
+  "name": "malguard-e2e-corpus",
+  "description": "End-to-end repo/package corpus for scanner, graph rules, agent, report, and dashboard checks.",
+  "cases": [
+    {
+      "repo_id": "m001_base64_exec",
+      "path": "e2e_corpus/synthetic_malicious/m001_base64_exec",
+      "label": "malicious",
+      "category": "decode_exec",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": ["PY-EXEC-DECODE"],
+      "agent_queries": [
+        {
+          "query": "find base64 decode then exec",
+          "expected_rules": ["PY-EXEC-DECODE"],
+          "expected_files": ["app.py"]
+        }
+      ],
+      "notes": "Direct base64 decode passed into exec."
+    },
+    {
+      "repo_id": "m002_hex_eval",
+      "path": "e2e_corpus/synthetic_malicious/m002_hex_eval",
+      "label": "malicious",
+      "category": "decode_exec",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": ["PY-EXEC-DECODE"],
+      "agent_queries": [
+        {
+          "query": "tim cho hex decode roi eval",
+          "expected_rules": ["PY-EXEC-DECODE"],
+          "expected_files": ["app.py"]
+        }
+      ],
+      "notes": "Hex decode passed into eval."
+    },
+    {
+      "repo_id": "m003_entropy_exec",
+      "path": "e2e_corpus/synthetic_malicious/m003_entropy_exec",
+      "label": "malicious",
+      "category": "obfuscation",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": ["PY-EXEC-ENTROPY"],
+      "agent_queries": [
+        {
+          "query": "find high entropy string executed",
+          "expected_rules": ["PY-EXEC-ENTROPY"],
+          "expected_files": ["app.py"]
+        }
+      ],
+      "notes": "High-entropy string used as dynamic code."
+    },
+    {
+      "repo_id": "m004_dynamic_import_system",
+      "path": "e2e_corpus/synthetic_malicious/m004_dynamic_import_system",
+      "label": "malicious",
+      "category": "dynamic_import",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": ["PY-IMPORT-OS-SYSTEM"],
+      "agent_queries": [
+        {
+          "query": "repo nay co dynamic import dang ngo khong",
+          "expected_rules": ["PY-IMPORT-OS-SYSTEM"],
+          "expected_files": ["app.py"]
+        }
+      ],
+      "notes": "Uses dynamic os import before shell execution."
+    },
+    {
+      "repo_id": "m005_pickle_network",
+      "path": "e2e_corpus/synthetic_malicious/m005_pickle_network",
+      "label": "malicious",
+      "category": "unsafe_deserialization",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": ["PY-PICKLE-NETWORK"],
+      "agent_queries": [
+        {
+          "query": "find pickle loads from network response",
+          "expected_rules": ["PY-PICKLE-NETWORK"],
+          "expected_files": ["app.py"]
+        }
+      ],
+      "notes": "Remote response content is unpickled."
+    },
+    {
+      "repo_id": "m006_rebuild_exec",
+      "path": "e2e_corpus/synthetic_malicious/m006_rebuild_exec",
+      "label": "malicious",
+      "category": "obfuscation",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": ["PY-EXEC-REBUILD"],
+      "agent_queries": [
+        {
+          "query": "find exec on reconstructed string",
+          "expected_rules": ["PY-EXEC-REBUILD"],
+          "expected_files": ["app.py"]
+        }
+      ],
+      "notes": "Payload string is rebuilt via join before exec."
+    },
+    {
+      "repo_id": "m007_env_exfil",
+      "path": "e2e_corpus/synthetic_malicious/m007_env_exfil",
+      "label": "malicious",
+      "category": "exfiltration",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": ["PY-EXFIL-ENV"],
+      "agent_queries": [
+        {
+          "query": "co doan nao gui bien moi truong ra ngoai khong",
+          "expected_rules": ["PY-EXFIL-ENV"],
+          "expected_files": ["app.py"]
+        }
+      ],
+      "notes": "Environment token is sent in a POST body."
+    },
+    {
+      "repo_id": "m008_command_spawn",
+      "path": "e2e_corpus/synthetic_malicious/m008_command_spawn",
+      "label": "malicious",
+      "category": "command_spawn",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": ["PY-COMMAND-INJECT", "PY-OS-SYSTEM"],
+      "agent_queries": [
+        {
+          "query": "find shell command built by string concat",
+          "expected_rules": ["PY-COMMAND-INJECT"],
+          "expected_files": ["app.py"]
+        }
+      ],
+      "notes": "Shell command uses string concatenation."
+    },
+    {
+      "repo_id": "g001_dropper_chain",
+      "path": "e2e_corpus/graph_chains/g001_dropper_chain",
+      "label": "malicious",
+      "category": "graph_dropper",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": [],
+      "expected_graph_rules": ["PY-GRAPH-DROPPER"],
+      "expected_call_paths": [
+        ["downloader.py:fetch_stage", "writer.py:write_stage", "runner.py:run_stage"]
+      ],
+      "agent_queries": [
+        {
+          "query": "show call path cua dropper",
+          "expected_rules": ["PY-GRAPH-DROPPER"],
+          "expected_files": ["downloader.py", "writer.py", "runner.py"]
+        }
+      ],
+      "notes": "Multi-file download-write-execute chain for CodeGraph rules."
+    },
+    {
+      "repo_id": "g002_stage2_import",
+      "path": "e2e_corpus/graph_chains/g002_stage2_import",
+      "label": "malicious",
+      "category": "graph_stage2_import",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": [],
+      "expected_graph_rules": ["PY-GRAPH-STAGE2-IMPORT"],
+      "expected_call_paths": [
+        ["builder.py:write_plugin", "loader.py:load_plugin"]
+      ],
+      "agent_queries": [
+        {
+          "query": "find code that writes python then imports it",
+          "expected_rules": ["PY-GRAPH-STAGE2-IMPORT"],
+          "expected_files": ["builder.py", "loader.py"]
+        }
+      ],
+      "notes": "Writes a Python file and dynamically imports it."
+    },
+    {
+      "repo_id": "g003_ctypes_loader",
+      "path": "e2e_corpus/graph_chains/g003_ctypes_loader",
+      "label": "malicious",
+      "category": "native_loader",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": [],
+      "expected_graph_rules": ["PY-GRAPH-CTYPES-LOAD"],
+      "expected_call_paths": [
+        ["native_loader.py:load_extension"]
+      ],
+      "agent_queries": [
+        {
+          "query": "find suspicious ctypes cdll loading",
+          "expected_rules": ["PY-GRAPH-CTYPES-LOAD"],
+          "expected_files": ["native_loader.py"]
+        }
+      ],
+      "notes": "Suspicious local shared library load."
+    },
+    {
+      "repo_id": "b001_cli_runner",
+      "path": "e2e_corpus/synthetic_benign/b001_cli_runner",
+      "label": "benign",
+      "category": "benign_subprocess",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": [],
+      "agent_queries": [],
+      "notes": "Uses subprocess with list args and no shell."
+    },
+    {
+      "repo_id": "b002_http_client",
+      "path": "e2e_corpus/synthetic_benign/b002_http_client",
+      "label": "benign",
+      "category": "benign_network",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": [],
+      "agent_queries": [],
+      "notes": "Simple HTTP GET client with no execution sink."
+    },
+    {
+      "repo_id": "b003_env_config",
+      "path": "e2e_corpus/synthetic_benign/b003_env_config",
+      "label": "benign",
+      "category": "benign_config",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": [],
+      "agent_queries": [],
+      "notes": "Reads environment variables for local config only."
+    },
+    {
+      "repo_id": "b004_json_serializer",
+      "path": "e2e_corpus/synthetic_benign/b004_json_serializer",
+      "label": "benign",
+      "category": "benign_serialization",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": [],
+      "agent_queries": [],
+      "notes": "Uses JSON serialization rather than pickle."
+    },
+    {
+      "repo_id": "b005_comments_only",
+      "path": "e2e_corpus/synthetic_benign/b005_comments_only",
+      "label": "benign",
+      "category": "benign_text",
+      "source": "synthetic",
+      "safe_to_commit": true,
+      "expected_rules": [],
+      "agent_queries": [],
+      "notes": "Mentions eval/exec in comments only."
+    }
+  ],
+  "external_sources": [
+    {
+      "name": "apiiro/malicious-code-ruleset",
+      "url": "https://github.com/apiiro/malicious-code-ruleset",
+      "use": "Import selected rule test cases after license/safety review."
+    },
+    {
+      "name": "DataDog/guarddog",
+      "url": "https://github.com/DataDog/guarddog",
+      "use": "Import selected test/eval malicious package samples after license/safety review."
+    },
+    {
+      "name": "MALOSS",
+      "url": "https://github.com/osssanitizer/maloss",
+      "use": "Reference supply-chain malware behaviors; import only isolated source samples."
+    },
+    {
+      "name": "CodeSearchNet",
+      "url": "https://github.com/github/CodeSearchNet",
+      "use": "Sample benign Python code for false-positive benchmarking."
+    }
+  ]
+}

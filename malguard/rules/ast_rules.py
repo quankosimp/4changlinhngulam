@@ -3,24 +3,49 @@ from __future__ import annotations
 import ast
 import math
 from collections import Counter
-from typing import List
 
 from malguard.models import Finding
 
 
+DECODE_CALLS = {
+    "base64.b64decode",
+    "base64.standard_b64decode",
+    "base64.urlsafe_b64decode",
+    "binascii.unhexlify",
+    "codecs.decode",
+}
+
+PROCESS_LAUNCHERS = {
+    "os.system",
+    "system",
+    "os.popen",
+    "popen",
+    "subprocess.call",
+    "subprocess.run",
+    "subprocess.Popen",
+    "subprocess.check_output",
+    "subprocess.check_call",
+    "subprocess.getoutput",
+}
+
+REQUEST_GET_CALLS = {
+    "requests.get",
+    "requests.api.get",
+    "session.get",
+    "urllib.request.urlopen",
+    "urlopen",
+}
+
+REQUEST_POST_CALLS = {"requests.post", "requests.api.post", "session.post", "post"}
+
+
+RULES = []
+
+
 def detect(tree: ast.AST, path: str, source: str | None = None) -> list[Finding]:
-    rules = [
-        detect_exec_on_decoded_payload,
-        detect_high_entropy_code_execution,
-        detect_dynamic_import_system,
-        detect_pickle_loads_from_network_or_socket,
-        detect_exec_on_reconstructed_string,
-        detect_command_injection_style_spawn,
-        detect_env_exfiltration_via_http_post,
-    ]
     findings: list[Finding] = []
-    for fn in rules:
-        findings.extend(fn(tree, path, source))
+    for rule in RULES:
+        findings.extend(rule(tree, path, source))
     return findings
 
 
@@ -29,30 +54,26 @@ def detect_exec_on_decoded_payload(
 ) -> list[Finding]:
     findings: list[Finding] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not _is_call_to(node, {"exec", "eval", "compile"}) or not node.args:
             continue
-        if _call_function_name(node).lower() not in {"exec", "eval", "compile"}:
+        if not _contains_decode_call(node.args[0]):
             continue
-        if not node.args:
-            continue
-        arg = node.args[0]
-        if _contains_decode_chain(arg):
-            high = _is_direct_decode(arg)
-            findings.append(
-                Finding(
-                    rule_id="PY-EXEC-DECODE",
-                    title="exec/eval with decoded string payload",
-                    severity="high" if high else "medium",
-                    confidence=0.95 if high else 0.84,
-                    file=path,
-                    line=getattr(node, "lineno", 1),
-                    snippet=_snippet(source, node),
-                    message=(
-                        "Dynamic execution receives data produced by base64/hex decode. "
-                        "Common malware loading pattern."
-                    ),
-                )
+        direct = isinstance(node.args[0], ast.Call) and _call_name(node.args[0].func) in DECODE_CALLS
+        findings.append(
+            Finding(
+                rule_id="PY-EXEC-DECODE",
+                title="exec/eval with decoded string payload",
+                severity="high" if direct else "medium",
+                confidence=0.95 if direct else 0.84,
+                file=path,
+                line=getattr(node, "lineno", 1),
+                snippet=_snippet(source, node),
+                message=(
+                    "Dynamic execution receives data produced by base64/hex decode. "
+                    "Common malware loading pattern."
+                ),
             )
+        )
     return findings
 
 
@@ -61,33 +82,29 @@ def detect_high_entropy_code_execution(
 ) -> list[Finding]:
     findings: list[Finding] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not _is_call_to(node, {"exec", "eval", "compile"}) or not node.args:
             continue
-        if _call_function_name(node).lower() not in {"exec", "eval", "compile"}:
-            continue
-        if not node.args:
-            continue
-        arg = node.args[0]
-        value = _constant_string(arg)
+        value = _string_constant(node.args[0])
         if value is None:
             continue
         entropy = _shannon_entropy(value)
-        if len(value) >= 64 and entropy >= 4.5:
-            findings.append(
-                Finding(
-                    rule_id="PY-EXEC-ENTROPY",
-                    title="high-entropy string executed",
-                    severity="high" if entropy >= 5.0 else "medium",
-                    confidence=0.88 if entropy >= 5.0 else 0.76,
-                    file=path,
-                    line=getattr(node, "lineno", 1),
-                    snippet=_snippet(source, node),
-                    message=(
-                        f"String length {len(value)} and entropy {entropy:.2f} "
-                        "is unusual for plain source and suspicious when executed."
-                    ),
-                )
+        if len(value) < 64 or entropy < 4.5:
+            continue
+        findings.append(
+            Finding(
+                rule_id="PY-EXEC-ENTROPY",
+                title="high-entropy string executed",
+                severity="high" if entropy >= 5.0 else "medium",
+                confidence=0.88 if entropy >= 5.0 else 0.76,
+                file=path,
+                line=getattr(node, "lineno", 1),
+                snippet=_snippet(source, node),
+                message=(
+                    f"String length {len(value)} and entropy {entropy:.2f} "
+                    "is unusual for plain source and suspicious when executed."
+                ),
             )
+        )
     return findings
 
 
@@ -98,30 +115,10 @@ def detect_dynamic_import_system(
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        func_name = _call_function_name(node)
-        if not func_name.endswith(".system") and func_name != "system":
+        if not isinstance(node.func, ast.Attribute) or node.func.attr not in {"system", "popen"}:
             continue
 
-        if _is_direct_os_system(node):
-            msg = (
-                "os.system() executes shell commands; combined with possible "
-                "import/exec patterns it is high-risk."
-            )
-            findings.append(
-                Finding(
-                    rule_id="PY-OS-SYSTEM",
-                    title="os.system call",
-                    severity="medium",
-                    confidence=0.82,
-                    file=path,
-                    line=getattr(node, "lineno", 1),
-                    snippet=_snippet(source, node),
-                    message=msg,
-                )
-            )
-            continue
-
-        receiver = _system_receiver(node.func)
+        receiver = node.func.value
         if _is_dynamic_os_import(receiver):
             findings.append(
                 Finding(
@@ -138,6 +135,24 @@ def detect_dynamic_import_system(
                     ),
                 )
             )
+            continue
+
+        if _call_name(node.func) in {"os.system", "os.popen"}:
+            findings.append(
+                Finding(
+                    rule_id="PY-OS-SYSTEM",
+                    title="os.system call",
+                    severity="medium",
+                    confidence=0.82,
+                    file=path,
+                    line=getattr(node, "lineno", 1),
+                    snippet=_snippet(source, node),
+                    message=(
+                        "os.system() executes shell commands; combined with possible "
+                        "import/exec patterns it is high-risk."
+                    ),
+                )
+            )
     return findings
 
 
@@ -146,11 +161,7 @@ def detect_pickle_loads_from_network_or_socket(
 ) -> list[Finding]:
     findings: list[Finding] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if _call_function_name(node) not in {"pickle.loads", "loads"}:
-            continue
-        if not node.args:
+        if not _is_call_to(node, {"pickle.loads", "loads"}) or not node.args:
             continue
         payload = node.args[0]
         if _is_requests_content(payload):
@@ -193,29 +204,25 @@ def detect_exec_on_reconstructed_string(
 ) -> list[Finding]:
     findings: list[Finding] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not _is_call_to(node, {"exec", "eval", "compile"}) or not node.args:
             continue
-        if _call_function_name(node).lower() not in {"exec", "eval", "compile"}:
+        if not _is_reconstructed_string(node.args[0]):
             continue
-        if not node.args:
-            continue
-        arg = node.args[0]
-        if _is_reconstructed_string(arg):
-            findings.append(
-                Finding(
-                    rule_id="PY-EXEC-REBUILD",
-                    title="exec/eval on reconstructed string",
-                    severity="medium",
-                    confidence=0.8,
-                    file=path,
-                    line=getattr(node, "lineno", 1),
-                    snippet=_snippet(source, node),
-                    message=(
-                        "Reconstructed payload strings (concat/join/slice/format) "
-                        "before execution are common obfuscation patterns."
-                    ),
-                )
+        findings.append(
+            Finding(
+                rule_id="PY-EXEC-REBUILD",
+                title="exec/eval on reconstructed string",
+                severity="medium",
+                confidence=0.8,
+                file=path,
+                line=getattr(node, "lineno", 1),
+                snippet=_snippet(source, node),
+                message=(
+                    "Reconstructed payload strings (concat/join/slice/format) "
+                    "before execution are common obfuscation patterns."
+                ),
             )
+        )
     return findings
 
 
@@ -226,28 +233,21 @@ def detect_command_injection_style_spawn(
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        func_name = _call_function_name(node)
-        if func_name not in _PROCESS_LAUNCHERS:
+        func_name = _call_name(node.func)
+        if func_name not in PROCESS_LAUNCHERS or not node.args:
             continue
 
-        args = list(node.args)
-        if not args:
-            continue
-        command_arg = args[0]
+        command_arg = node.args[0]
         shell = _keyword_bool(node, "shell")
-
         suspicious_builder = _is_reconstructed_string(command_arg)
-        if func_name in {"os.system", "os.popen"}:
-            suspicious_builder = _is_reconstructed_string(command_arg) or isinstance(
-                command_arg, ast.Name
-            )
+        if func_name in {"os.system", "os.popen", "system", "popen"}:
+            suspicious_builder = suspicious_builder or isinstance(command_arg, ast.Name)
         if not suspicious_builder and not shell:
             continue
 
-        confidence = 0.92 if func_name in {"os.system", "os.popen"} else 0.82
+        confidence = 0.92 if func_name in {"os.system", "os.popen", "system", "popen"} else 0.82
         if shell:
             confidence = min(1.0, confidence + 0.06)
-
         findings.append(
             Finding(
                 rule_id="PY-COMMAND-INJECT",
@@ -272,15 +272,11 @@ def detect_env_exfiltration_via_http_post(
     env_names = _collect_environment_aliases(tree)
     findings: list[Finding] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not _is_call_to(node, REQUEST_POST_CALLS):
             continue
-        if not _is_requests_post(node):
-            continue
-
         payload_nodes = list(node.args[1:]) + [kw.value for kw in node.keywords if kw.value]
-        if not any(_contains_env_usage(n, env_names) for n in payload_nodes):
+        if not any(_contains_env_usage(payload, env_names) for payload in payload_nodes):
             continue
-
         findings.append(
             Finding(
                 rule_id="PY-EXFIL-ENV",
@@ -299,44 +295,45 @@ def detect_env_exfiltration_via_http_post(
     return findings
 
 
-_PROCESS_LAUNCHERS = {
-    "os.system",
-    "os.popen",
-    "subprocess.call",
-    "subprocess.run",
-    "subprocess.Popen",
-    "subprocess.check_output",
-    "subprocess.check_call",
-    "subprocess.getoutput",
-}
+RULES = [
+    detect_exec_on_decoded_payload,
+    detect_high_entropy_code_execution,
+    detect_dynamic_import_system,
+    detect_pickle_loads_from_network_or_socket,
+    detect_exec_on_reconstructed_string,
+    detect_command_injection_style_spawn,
+    detect_env_exfiltration_via_http_post,
+]
 
 
-def _call_function_name(node: ast.AST | None) -> str:
+def _is_call_to(node: ast.AST, names: set[str]) -> bool:
+    return isinstance(node, ast.Call) and _call_name(node.func) in names
+
+
+def _call_name(node: ast.AST | None) -> str:
     if node is None:
         return ""
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
-        base = _call_function_name(node.value)
-        if base:
-            return f"{base}.{node.attr}"
-        return node.attr
+        base = _call_name(node.value)
+        return f"{base}.{node.attr}" if base else node.attr
+    if isinstance(node, ast.Call):
+        return _call_name(node.func)
     return ""
 
 
-def _constant_string(node: ast.AST | None) -> str | None:
+def _string_constant(node: ast.AST | None) -> str | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     return None
 
 
-def _collect_string_literals(node: ast.AST) -> list[str]:
-    out: list[str] = []
+def _contains_decode_call(node: ast.AST) -> bool:
     for child in ast.walk(node):
-        value = _constant_string(child)
-        if value is not None:
-            out.append(value)
-    return out
+        if isinstance(child, ast.Call) and _call_name(child.func) in DECODE_CALLS:
+            return True
+    return False
 
 
 def _shannon_entropy(value: str) -> float:
@@ -344,11 +341,7 @@ def _shannon_entropy(value: str) -> float:
         return 0.0
     total = len(value)
     freq = Counter(value)
-    entropy = 0.0
-    for count in freq.values():
-        p = count / total
-        entropy -= p * math.log(p, 2)
-    return entropy
+    return -sum((count / total) * math.log(count / total, 2) for count in freq.values())
 
 
 def _snippet(source: str | None, node: ast.AST) -> str:
@@ -367,72 +360,29 @@ def _safe_unparse(node: ast.AST) -> str:
         return ""
 
 
-def _is_direct_decode(node: ast.AST) -> bool:
-    if not isinstance(node, ast.Call):
-        return False
-    return _call_function_name(node) in {
-        "base64.b64decode",
-        "base64.standard_b64decode",
-        "base64.urlsafe_b64decode",
-        "binascii.unhexlify",
-        "codecs.decode",
-    }
-
-
-def _contains_decode_chain(node: ast.AST) -> bool:
-    for child in ast.walk(node):
-        if _is_direct_decode(child):
-            return True
-        if isinstance(child, ast.Call) and _call_function_name(child) == "binascii.hexlify":
-            continue
-    return False
-
-
-def _system_receiver(node: ast.AST | None) -> ast.AST | None:
-    if isinstance(node, ast.Attribute):
-        return node.value
-    if isinstance(node, ast.Name):
-        return node
-    return None
-
-
-def _is_direct_os_system(node: ast.Call) -> bool:
-    fname = _call_function_name(node.func)
-    return fname in {"os.system", "system", "popen"}
-
-
 def _is_dynamic_os_import(expr: ast.AST | None) -> bool:
     if not isinstance(expr, ast.Call):
         return False
-    func_name = _call_function_name(expr)
-    if func_name not in {"__import__", "importlib.import_module"}:
+    if _call_name(expr.func) not in {"__import__", "importlib.import_module"}:
         return False
     if not expr.args:
         return False
-    mod = _constant_string(expr.args[0])
-    return mod == "os"
+    return _string_constant(expr.args[0]) == "os"
 
 
 def _is_requests_content(node: ast.AST) -> bool:
-    if not isinstance(node, ast.Attribute):
-        return False
-    if node.attr != "content":
-        return False
-    return _is_request_get(node.value)
-
-
-def _is_request_get(node: ast.AST | None) -> bool:
-    if not isinstance(node, ast.Call):
-        return False
-    fn = _call_function_name(node.func)
-    return fn in {"requests.get", "session.get", "urllib.request.urlopen", "requests.api.get"}
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "content"
+        and isinstance(node.value, ast.Call)
+        and _call_name(node.value.func) in REQUEST_GET_CALLS
+    )
 
 
 def _is_socket_recv(node: ast.AST) -> bool:
-    if not isinstance(node, ast.Call):
-        return False
-    fn = _call_function_name(node.func)
-    return fn.endswith(".recv") or fn == "recv"
+    return isinstance(node, ast.Call) and (
+        _call_name(node.func) == "recv" or _call_name(node.func).endswith(".recv")
+    )
 
 
 def _is_reconstructed_string(node: ast.AST) -> bool:
@@ -443,13 +393,13 @@ def _is_reconstructed_string(node: ast.AST) -> bool:
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
         return _is_reconstruct_unit(node.left) and _is_reconstruct_unit(node.right)
     if isinstance(node, ast.Call):
-        fn = _call_function_name(node.func)
-        if fn.endswith(".join") and node.args:
+        fn = _call_name(node.func)
+        if (fn == "join" or fn.endswith(".join")) and node.args:
             return True
-        if fn.endswith(".format"):
+        if fn == "format" or fn.endswith(".format"):
             return True
-    if isinstance(node, ast.Call) and _call_function_name(node.func) == "str":
-        return _is_reconstructed_string(node.args[0]) if node.args else False
+        if fn == "str" and node.args:
+            return _is_reconstructed_string(node.args[0])
     return False
 
 
@@ -458,78 +408,52 @@ def _is_reconstruct_unit(node: ast.AST) -> bool:
 
 
 def _is_negative_slice(node: ast.AST) -> bool:
-    if not isinstance(node, ast.Subscript):
+    if not isinstance(node, ast.Subscript) or not isinstance(node.slice, ast.Slice):
         return False
-    slice_node = node.slice
-    step = None
-    if isinstance(slice_node, ast.Slice):
-        step = slice_node.step
-    elif hasattr(slice_node, "step"):
-        step = slice_node.step
-    return _is_negative_one(step)
-
-
-def _is_negative_one(node: ast.AST | None) -> bool:
-    if isinstance(node, ast.Constant) and node.value == -1:
+    step = node.slice.step
+    if isinstance(step, ast.Constant) and step.value == -1:
         return True
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
-        return isinstance(node.operand, ast.Constant) and node.operand.value == 1
-    return False
-
-
-def _is_requests_post(node: ast.Call) -> bool:
-    if not isinstance(node, ast.Call):
-        return False
-    fn = _call_function_name(node.func)
-    return fn in {"requests.post", "session.post", "post"}
+    return (
+        isinstance(step, ast.UnaryOp)
+        and isinstance(step.op, ast.USub)
+        and isinstance(step.operand, ast.Constant)
+        and step.operand.value == 1
+    )
 
 
 def _collect_environment_aliases(tree: ast.AST) -> set[str]:
     aliases: set[str] = set()
 
-    class EnvAliasCollector(ast.NodeVisitor):
-        def visit_Assign(self, assign_node: ast.Assign) -> None:
-            if isinstance(assign_node.value, ast.Subscript) and _is_os_environ_store(
-                assign_node.value
-            ):
-                _add_targets(assign_node.targets)
-            if isinstance(assign_node.value, ast.Call) and _call_function_name(
-                assign_node.value.func
-            ) in {"os.getenv", "getenv"}:
-                _add_targets(assign_node.targets)
-            self.generic_visit(assign_node)
-
-        def visit_AnnAssign(self, ann_node: ast.AnnAssign) -> None:
-            if isinstance(ann_node.value, ast.Subscript) and _is_os_environ_store(ann_node.value):
-                _add_targets([ann_node.target])
-            if isinstance(ann_node.value, ast.Call) and _call_function_name(
-                ann_node.value.func
-            ) in {"os.getenv", "getenv"}:
-                _add_targets([ann_node.target])
-            self.generic_visit(ann_node)
-
-        def visit_AugAssign(self, aug_node: ast.AugAssign) -> None:
-            self.generic_visit(aug_node)
-
-        def _add_targets(self, targets):
-            _add_targets(targets)
-
-    def _add_targets(targets: list[ast.expr]) -> None:
+    def add_targets(targets: list[ast.expr]) -> None:
         for target in targets:
             if isinstance(target, ast.Name):
                 aliases.add(target.id)
             elif isinstance(target, (ast.Tuple, ast.List)):
-                _add_targets(list(target.elts))
+                add_targets(list(target.elts))
+
+    class EnvAliasCollector(ast.NodeVisitor):
+        def visit_Assign(self, node: ast.Assign) -> None:
+            if _is_env_value(node.value):
+                add_targets(list(node.targets))
+            self.generic_visit(node)
+
+        def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+            if node.value is not None and _is_env_value(node.value):
+                add_targets([node.target])
+            self.generic_visit(node)
 
     EnvAliasCollector().visit(tree)
     return aliases
 
 
+def _is_env_value(node: ast.AST) -> bool:
+    if isinstance(node, ast.Subscript) and _is_os_environ_store(node):
+        return True
+    return isinstance(node, ast.Call) and _call_name(node.func) in {"os.getenv", "getenv"}
+
+
 def _is_os_environ_store(node: ast.Subscript) -> bool:
-    if not isinstance(node.value, ast.Attribute):
-        return False
-    base = _call_function_name(node.value.value)
-    return base == "os" and node.value.attr == "environ"
+    return isinstance(node.value, ast.Attribute) and _call_name(node.value) == "os.environ"
 
 
 def _contains_env_usage(node: ast.AST | None, aliases: set[str]) -> bool:
@@ -540,10 +464,8 @@ def _contains_env_usage(node: ast.AST | None, aliases: set[str]) -> bool:
             return True
         if isinstance(child, ast.Subscript) and _is_os_environ_store(child):
             return True
-        if isinstance(child, ast.Call):
-            fn = _call_function_name(child.func)
-            if fn in {"os.getenv", "getenv"}:
-                return True
+        if isinstance(child, ast.Call) and _call_name(child.func) in {"os.getenv", "getenv"}:
+            return True
     return False
 
 

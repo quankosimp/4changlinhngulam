@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 
+from malguard.benchmark import print_summary, run_benchmark
 from malguard.scanner import scan
 
 
@@ -13,6 +13,7 @@ SEVERITY_ORDER = {"high": 3, "medium": 2, "low": 1}
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="malguard: Python malware triage scanner")
     sub = parser.add_subparsers(dest="command")
+
     scan_cmd = sub.add_parser("scan", help="scan a directory for suspicious patterns")
     scan_cmd.add_argument("path", help="file or directory to scan")
     scan_cmd.add_argument("--json", action="store_true", help="output findings as JSON")
@@ -21,6 +22,25 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="optional report.json output path",
     )
+
+    benchmark_cmd = sub.add_parser("benchmark", help="run an end-to-end benchmark manifest")
+    benchmark_cmd.add_argument(
+        "manifest",
+        nargs="?",
+        default="tests/e2e_manifest.json",
+        help="benchmark manifest path",
+    )
+    benchmark_cmd.add_argument(
+        "--out",
+        default="benchmark_reports/latest",
+        help="benchmark output directory",
+    )
+    benchmark_cmd.add_argument(
+        "--strict",
+        action="store_true",
+        help="return non-zero when benchmark thresholds fail",
+    )
+    benchmark_cmd.add_argument("--json", action="store_true", help="print benchmark metrics as JSON")
     return parser
 
 
@@ -56,6 +76,14 @@ def _print_table(findings) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "benchmark":
+        run = run_benchmark(args.manifest, args.out, strict=args.strict)
+        if args.json:
+            print(json.dumps(run.metrics, indent=2))
+        else:
+            print_summary(run)
+        return 0 if run.passed else 1
 
     if args.command != "scan":
         parser.print_help()

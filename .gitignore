@@ -1,2 +1,6 @@
 .venv/
 .env
+
+benchmark_reports/
+__pycache__/
+*.pyc
