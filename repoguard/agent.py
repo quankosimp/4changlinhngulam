@@ -50,11 +50,14 @@ class AgentResponseError(RuntimeError):
     pass
 
 
-def propose_patch(repo_path: str, finding: Finding) -> PatchProposal:
+def propose_patch(repo_path: str, finding: Finding, use_llm: bool = True) -> PatchProposal:
+    if not use_llm:
+        return _fallback_patch(repo_path, finding, "LLM disabled")
+
     try:
         config = openai_config()
     except ConfigurationError as exc:
-        raise AgentConfigurationError(str(exc)) from exc
+        return _fallback_patch(repo_path, finding, f"OpenAI unavailable: {exc}")
 
     prompt = _build_prompt(Path(repo_path).resolve(), finding)
     body = {
@@ -86,9 +89,103 @@ def propose_patch(repo_path: str, finding: Finding) -> PatchProposal:
         },
         "reasoning": {"effort": config.reasoning_effort},
     }
-    response = _post_json(config.api_key, body, timeout=config.timeout_seconds)
-    data = _extract_json(response)
-    return PatchProposal.from_dict(data)
+    try:
+        response = _post_json(config.api_key, body, timeout=config.timeout_seconds)
+        data = _extract_json(response)
+        return PatchProposal.from_dict(data)
+    except AgentResponseError as exc:
+        return _fallback_patch(repo_path, finding, f"OpenAI request failed: {exc}")
+
+
+def _fallback_patch(repo_path: str, finding: Finding, reason: str) -> PatchProposal:
+    target = finding.target_region
+    rule_id = finding.rule_id
+
+    if rule_id == "PY-DECODE-EXEC":
+        return PatchProposal(
+            finding_id=finding.id,
+            action="quarantine",
+            file=target.file,
+            start_line=target.start_line,
+            end_line=target.end_line,
+            replacement='raise RuntimeError("Blocked suspicious decoded dynamic execution")',
+            rationale=f"{reason}. Quarantine the decoded exec/eval sink.",
+            expected_risk_reduction="Removes the dynamic execution sink from the behavior path.",
+        )
+
+    if rule_id == "PY-ENV-EXFIL":
+        return PatchProposal(
+            finding_id=finding.id,
+            action="quarantine",
+            file=target.file,
+            start_line=target.start_line,
+            end_line=target.end_line,
+            replacement=(
+                "# Removed suspicious credential exfiltration.\n"
+                "return None"
+            ),
+            rationale=f"{reason}. Remove the outbound request carrying environment-derived data.",
+            expected_risk_reduction="Breaks the environment-secret to network-sink path.",
+        )
+
+    if rule_id == "PY-DROPPER":
+        return PatchProposal(
+            finding_id=finding.id,
+            action="quarantine",
+            file=target.file,
+            start_line=target.start_line,
+            end_line=target.end_line,
+            replacement='raise RuntimeError("Blocked suspicious download-write-execute chain")',
+            rationale=f"{reason}. Stop the final execution stage of the dropper chain.",
+            expected_risk_reduction="Prevents the downloaded payload from being executed.",
+        )
+
+    if rule_id == "PY-SHELL-INJECTION":
+        return PatchProposal(
+            finding_id=finding.id,
+            action="quarantine",
+            file=target.file,
+            start_line=target.start_line,
+            end_line=target.end_line,
+            replacement='raise RuntimeError("Blocked unsafe shell command execution")',
+            rationale=f"{reason}. Replace shell=True or dynamic command execution with a hard stop.",
+            expected_risk_reduction="Removes the process execution sink that can receive dynamic input.",
+        )
+
+    if rule_id == "PY-PICKLE-NETWORK":
+        return PatchProposal(
+            finding_id=finding.id,
+            action="quarantine",
+            file=target.file,
+            start_line=target.start_line,
+            end_line=target.end_line,
+            replacement='raise RuntimeError("Blocked unsafe network pickle deserialization")',
+            rationale=f"{reason}. Block unpickling directly from a network response.",
+            expected_risk_reduction="Removes the unsafe deserialization sink.",
+        )
+
+    if rule_id in {"PY-UNUSED-FUNCTION", "PY-UNUSED-CLASS", "PY-UNUSED-SYMBOL"}:
+        return PatchProposal(
+            finding_id=finding.id,
+            action="remove",
+            file=target.file,
+            start_line=target.start_line,
+            end_line=target.end_line,
+            replacement="",
+            rationale=f"{reason}. No callers or references were found in CodeGraph/fallback context.",
+            expected_risk_reduction="Removes dead code after impact context review.",
+        )
+
+    return PatchProposal(
+        finding_id=finding.id,
+        action="needs_review",
+        file=target.file,
+        start_line=target.start_line,
+        end_line=target.end_line,
+        replacement="",
+        rationale=f"{reason}. No deterministic safe patch is available for this rule.",
+        expected_risk_reduction="Manual review required before remediation.",
+    )
 
 
 def _build_prompt(repo: Path, finding: Finding) -> str:

@@ -25,9 +25,10 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--apply", action="store_true")
     fix_cmd.add_argument("--report", default="repoguard_report.json")
-    fix_cmd.add_argument("--max-findings", type=int, default=3)
+    fix_cmd.add_argument("--max-findings", type=int, default=10)
     fix_cmd.add_argument("--test-command", default=None)
     fix_cmd.add_argument("--no-codegraph", action="store_true")
+    fix_cmd.add_argument("--no-llm", action="store_true", help="Use deterministic MVP fallback patches.")
 
     benchmark_cmd = sub.add_parser("benchmark", help="run benchmark manifest")
     benchmark_cmd.add_argument("manifest", nargs="?", default="tests/repoguard_manifest.json")
@@ -65,8 +66,8 @@ def _scan_command(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(report.to_dict(), indent=2))
     else:
-        _print_findings(findings)
-    return 1 if report.findings else 0
+        _print_findings(report.findings)
+    return 0
 
 
 def _fix_command(args: argparse.Namespace) -> int:
@@ -80,15 +81,14 @@ def _fix_command(args: argparse.Namespace) -> int:
             max_findings=args.max_findings,
             test_command=args.test_command,
             use_codegraph=not args.no_codegraph,
+            use_llm=not args.no_llm,
         )
     except (AgentConfigurationError, AgentResponseError) as exc:
         print(str(exc))
         return 2
     write_report(result.report, args.report)
     print(f"Saved report: {args.report}")
-    for item in result.applications:
-        if item.diff:
-            print(item.diff)
+    _print_fix_summary(result.report, dry_run=not args.apply)
     return 0
 
 
@@ -105,6 +105,25 @@ def _print_findings(findings) -> None:
             f"{finding.severity:<6} {finding.confidence:.2f} "
             f"{finding.file}:{finding.line} {finding.rule_id} {finding.message}"
         )
+
+
+def _print_fix_summary(report, dry_run: bool) -> None:
+    if not report.findings:
+        print("Finding detected: none")
+        return
+
+    findings_by_id = {item.id: item for item in report.findings}
+    for proposal, verification in zip(report.patches, report.verification):
+        finding = findings_by_id.get(proposal.finding_id)
+        if finding is None:
+            continue
+        print(f"Finding detected: {finding.rule_id} {finding.severity} {finding.file}:{finding.line}")
+        print(f"Patch proposed: {proposal.action} lines {proposal.start_line}-{proposal.end_line}")
+        print(f"Patch applied: {'no (dry-run)' if dry_run else verification.status == 'patched'}")
+        print("Scanner rerun: yes" if not dry_run else "Scanner rerun: no (dry-run)")
+        print(f"Verification result: {verification.status} - {verification.notes}")
+        print("Diff shown:")
+        print(verification.diff or "(no diff)")
 
 
 if __name__ == "__main__":

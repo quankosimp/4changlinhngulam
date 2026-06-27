@@ -4,7 +4,7 @@ import difflib
 from dataclasses import dataclass
 from pathlib import Path
 
-from repoguard.models import Finding, PatchProposal
+from repoguard.models import Finding, PatchProposal, TargetRegion
 
 
 FORBIDDEN_REPLACEMENT_TOKENS = (
@@ -35,6 +35,33 @@ def preview_patch(repo_path: str, finding: Finding, proposal: PatchProposal) -> 
 
 def apply_patch(repo_path: str, finding: Finding, proposal: PatchProposal) -> PatchApplication:
     return _build_application(repo_path, finding, proposal, apply=True)
+
+
+def apply_patch_proposal(
+    proposal: PatchProposal,
+    finding: Finding | None = None,
+    apply: bool = False,
+) -> PatchApplication:
+    if finding is None:
+        finding = Finding(
+            id=proposal.finding_id,
+            category="refactor",
+            rule_id="UNKNOWN",
+            title="Patch proposal",
+            severity="low",
+            confidence=0.0,
+            file=proposal.file,
+            line=proposal.start_line,
+            snippet="",
+            message="Compatibility wrapper finding.",
+            target_region=TargetRegion(
+                file=proposal.file,
+                start_line=proposal.start_line,
+                end_line=proposal.end_line,
+            ),
+        )
+    repo_path = str(Path(proposal.file).resolve().parent) if Path(proposal.file).is_absolute() else "."
+    return _build_application(repo_path, finding, proposal, apply=apply)
 
 
 def _build_application(

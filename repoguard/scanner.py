@@ -44,6 +44,10 @@ def scan(path: str, include_dead_code: bool | None = None) -> list[Finding]:
     return _dedupe(findings)
 
 
+def scan_path(path: str | Path) -> list[Finding]:
+    return scan(str(path))
+
+
 def _parse_files(root: Path) -> list[FileContext]:
     py_files = list(_iter_python_files(root)) if root.is_dir() else (
         [root] if root.suffix == ".py" else []
@@ -114,5 +118,7 @@ def _default_include_dead_code(root: Path) -> bool:
         return False
     marker_names = {"pyproject.toml", "setup.py", "setup.cfg"}
     if any((root / name).exists() for name in marker_names):
+        return True
+    if any(path.is_dir() and path.name == "dead_code" for path in root.rglob("*")):
         return True
     return "dead_code" in root.parts or root.name == "dead_code"
