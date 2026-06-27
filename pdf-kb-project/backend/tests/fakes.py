@@ -34,3 +34,6 @@ class FakeOpenAIService:
         if self.fail_tts:
             raise RuntimeError("synthetic TTS failure")
         return b"fake-mp3-bytes"
+
+    def transcribe_audio(self, audio: bytes, filename: str = "question.webm") -> str:
+        return "Alpha pricing?"

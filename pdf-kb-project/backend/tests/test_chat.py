@@ -113,6 +113,20 @@ def test_chat_tts_failure_keeps_text_answer_and_null_audio(monkeypatch, temp_bac
     del app.state.openai_service
 
 
+def test_transcribe_audio_returns_text(temp_backend):
+    app.state.openai_service = FakeOpenAIService()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/transcribe",
+        files={"file": ("question.webm", b"fake-audio", "audio/webm")},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"text": "Alpha pricing?"}
+    del app.state.openai_service
+
+
 def test_list_document_chapters_returns_markdown(temp_backend):
     db = SessionLocal()
     document = Document(filename="chaptered.pdf", mime_type="application/pdf", size_bytes=100, status=DocumentStatus.READY)

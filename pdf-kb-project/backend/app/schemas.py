@@ -31,6 +31,10 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
 
 
+class TranscriptionResponse(BaseModel):
+    text: str
+
+
 class Citation(BaseModel):
     document_id: str
     filename: str

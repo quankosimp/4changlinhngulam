@@ -94,3 +94,19 @@ class OpenAIService:
                 return response.content
         except Exception as exc:  # pragma: no cover - exercised through stubs in tests
             raise ProviderError(str(exc)) from exc
+
+    def transcribe_audio(self, audio: bytes, filename: str = "question.webm") -> str:
+        if not self.settings.openai_api_key:
+            raise ProviderError("OPENAI_API_KEY is not configured.")
+        try:
+            with httpx.Client(timeout=120) as client:
+                response = client.post(
+                    f"{self.settings.openai_base_url}/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
+                    data={"model": self.settings.transcription_model},
+                    files={"file": (filename, audio)},
+                )
+                response.raise_for_status()
+                return str(response.json().get("text", "")).strip()
+        except Exception as exc:  # pragma: no cover - exercised through stubs in tests
+            raise ProviderError(str(exc)) from exc

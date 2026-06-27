@@ -102,6 +102,23 @@ export function sendChatMessage(sessionId: string | null, message: string): Even
   return stream;
 }
 
+export async function transcribeAudio(audio: Blob): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", audio, "question.webm");
+
+  const response = await fetch(`${API_BASE}/api/transcribe`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || "Không thể nhận dạng giọng nói.");
+  }
+
+  const payload = (await response.json()) as { text: string };
+  return payload.text;
+}
+
 export async function getDocumentChapters(documentId: string): Promise<DocumentChapter[]> {
   const response = await fetch(`${API_BASE}/api/documents/${documentId}/chapters`);
   if (!response.ok) {

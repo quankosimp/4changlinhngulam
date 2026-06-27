@@ -16,6 +16,7 @@ class Settings:
     chat_model: str
     tts_model: str
     tts_voice: str
+    transcription_model: str
     max_pdf_size_bytes: int
     chunk_target_tokens: int
     chunk_overlap_tokens: int
@@ -37,6 +38,7 @@ def get_settings() -> Settings:
         chat_model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
         tts_model=os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
         tts_voice=os.getenv("OPENAI_TTS_VOICE", "alloy"),
+        transcription_model=os.getenv("OPENAI_TRANSCRIPTION_MODEL", "gpt-4o-mini-transcribe"),
         max_pdf_size_bytes=int(os.getenv("MAX_PDF_SIZE_BYTES", str(50 * 1024 * 1024))),
         chunk_target_tokens=int(os.getenv("CHUNK_TARGET_TOKENS", "800")),
         chunk_overlap_tokens=int(os.getenv("CHUNK_OVERLAP_TOKENS", "120")),

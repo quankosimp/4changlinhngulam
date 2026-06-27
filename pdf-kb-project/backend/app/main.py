@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -16,7 +17,7 @@ from .ingestion import run_ingestion_job
 from .models import ChatMessage, ChatSession, Document, DocumentChapter
 from .openai_service import OpenAIService
 from .retrieval import RetrievedChunk, retrieve_context
-from .schemas import ChatRequest, DocumentChapterRead, DocumentRead, DocumentUploadResponse
+from .schemas import ChatRequest, DocumentChapterRead, DocumentRead, DocumentUploadResponse, TranscriptionResponse
 from .settings import get_settings
 from .storage import ensure_storage_dirs, save_audio_bytes, save_upload_file
 
@@ -32,6 +33,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="PDF Knowledge Base API", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.mount("/media", StaticFiles(directory=settings.storage_dir), name="media")
 
 
@@ -195,6 +203,17 @@ def list_document_chapters(document_id: str) -> list[DocumentChapterRead]:
         ]
     finally:
         db.close()
+
+
+@app.post("/api/transcribe", response_model=TranscriptionResponse)
+async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionResponse:
+    audio = await file.read()
+    if not audio:
+        raise HTTPException(status_code=400, detail="Audio file is empty.")
+    if len(audio) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Audio exceeds 25 MB limit.")
+    text = _service().transcribe_audio(audio, file.filename or "question.webm")
+    return TranscriptionResponse(text=text)
 
 
 async def _chat_events(payload: ChatRequest) -> AsyncIterator[str]:

@@ -11,44 +11,24 @@ import {
   parseChatEventStream,
   playAssistantAudio,
   sendChatMessage,
+  transcribeAudio,
 } from "@/lib/chatService";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000").replace(/\/$/, "");
 
-function normalizeDocumentStatus(status: string): string {
+function statusLabel(status: string): string {
   return status[0].toUpperCase() + status.slice(1);
 }
 
-function statusChip(status: string) {
-  const color =
-    status === "ready"
-      ? "#065f46"
-      : status === "processing"
-        ? "#92400e"
-        : status === "failed"
-          ? "#991b1b"
-          : "#1d4ed8";
-
-  return (
-    <span
-      style={{
-        fontWeight: 600,
-        color,
-        border: `1px solid ${color}`,
-        borderRadius: 999,
-        padding: "2px 8px",
-        fontSize: 12,
-        textTransform: "lowercase",
-      }}
-    >
-      {normalizeDocumentStatus(status)}
-    </span>
-  );
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export default function Home() {
   const [documents, setDocuments] = useState<DocumentRead[]>([]);
-  const [uploadError, setUploadError] = useState<string>("");
+  const [uploadError, setUploadError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [pickedFile, setPickedFile] = useState<File | null>(null);
 
@@ -62,26 +42,30 @@ export default function Home() {
   const [citations, setCitations] = useState<Citation[]>([]);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [chatError, setChatError] = useState("");
   const isStreaming = useMemo(() => isSending, [isSending]);
-  const audioButtonLabel = audioUrl ? "Tạm dừng / Phát lại" : "Không có audio";
 
   const uploadRef = useRef<HTMLInputElement | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  const selectedDocument = documents.find((document) => document.id === selectedDocumentId);
 
   const fetchDocuments = async () => {
-    const response = await fetch(`${API_BASE}/api/documents`);
-    if (!response.ok) {
-      return;
+    try {
+      const response = await fetch(`${API_BASE}/api/documents`);
+      if (!response.ok) return;
+      setDocuments((await response.json()) as DocumentRead[]);
+      setUploadError("");
+    } catch {
+      setUploadError("Không kết nối được backend.");
     }
-
-    const data = (await response.json()) as DocumentRead[];
-    setDocuments(data);
   };
 
   const fetchChapters = async (documentId: string) => {
     try {
-      const chapterData = await getDocumentChapters(documentId);
-      setChapters(chapterData);
+      setChapters(await getDocumentChapters(documentId));
       setChaptersError("");
     } catch (error) {
       setChapters([]);
@@ -91,37 +75,23 @@ export default function Home() {
 
   useEffect(() => {
     fetchDocuments();
-    const interval = setInterval(() => {
-      const needsPoll = documents.some((doc) => doc.status === "processing" || doc.status === "uploaded");
-      if (needsPoll) {
-        fetchDocuments();
-      }
-    }, 2500);
-
+    const interval = setInterval(fetchDocuments, 3000);
     return () => clearInterval(interval);
-  }, [documents]);
+  }, []);
 
   useEffect(() => {
-    if (!selectedDocumentId) {
-      return;
-    }
-
-    const active = documents.some((document) => document.id === selectedDocumentId);
-    if (!active) {
+    if (!selectedDocumentId) return;
+    if (!documents.some((document) => document.id === selectedDocumentId)) {
       setSelectedDocumentId(null);
       setChapters([]);
       return;
     }
-
     fetchChapters(selectedDocumentId);
   }, [selectedDocumentId, documents]);
 
   const handleUpload = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    if (!pickedFile) {
-      return;
-    }
+    if (!pickedFile) return;
 
     const formData = new FormData();
     formData.append("file", pickedFile);
@@ -129,21 +99,12 @@ export default function Home() {
     setUploadError("");
 
     try {
-      const response = await fetch(`${API_BASE}/api/documents`, {
-        method: "POST",
-        body: formData,
-      });
-
+      const response = await fetch(`${API_BASE}/api/documents`, { method: "POST", body: formData });
       const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload?.detail || "Upload failed.");
-      }
-
+      if (!response.ok) throw new Error(payload?.detail || "Upload failed.");
       await fetchDocuments();
       setPickedFile(null);
-      if (uploadRef.current) {
-        uploadRef.current.value = "";
-      }
+      if (uploadRef.current) uploadRef.current.value = "";
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "Upload failed.");
     } finally {
@@ -151,12 +112,40 @@ export default function Home() {
     }
   };
 
-  const handleChatSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!message.trim() || isStreaming) {
+  const handleVoiceInput = async () => {
+    if (isRecording) {
+      recorderRef.current?.stop();
       return;
     }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (event) => event.data.size && audioChunksRef.current.push(event.data);
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        setIsRecording(false);
+        try {
+          const audio = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+          const text = await transcribeAudio(audio);
+          setMessage((value) => (value ? `${value}\n${text}` : text));
+        } catch (error) {
+          setChatError(error instanceof Error ? error.message : "Không thể nhận dạng giọng nói.");
+        }
+      };
+      setChatError("");
+      setIsRecording(true);
+      recorder.start();
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : "Không mở được microphone.");
+    }
+  };
+
+  const handleChatSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!message.trim() || isStreaming) return;
 
     const payload = message.trim();
     setMessage("");
@@ -167,17 +156,12 @@ export default function Home() {
     setIsSending(true);
 
     try {
-      const streamOrSource = sendChatMessage(sessionId, payload);
-
-      if (streamOrSource instanceof ReadableStream) {
-        for await (const event of parseChatEventStream(streamOrSource)) {
-          if (event.event === "delta") {
-            const next = event.data.text;
-            if (typeof next === "string") {
-              setStreamedText((value) => `${value}${next}`);
-            }
+      const stream = sendChatMessage(sessionId, payload);
+      if (stream instanceof ReadableStream) {
+        for await (const event of parseChatEventStream(stream)) {
+          if (event.event === "delta" && typeof event.data.text === "string") {
+            setStreamedText((value) => `${value}${event.data.text}`);
           }
-
           if (event.event === "done") {
             const payload = event as ParsedSSEEvent;
             if (payload.event === "done") {
@@ -186,10 +170,7 @@ export default function Home() {
               setCitations(payload.data.citations);
             }
           }
-
-          if (event.event === "error") {
-            setChatError(event.data.message);
-          }
+          if (event.event === "error") setChatError(event.data.message);
         }
       }
     } catch (error) {
@@ -200,125 +181,106 @@ export default function Home() {
   };
 
   return (
-    <main>
-      <h1>PDF Knowledge Base MVP</h1>
-
-      <section style={{ marginBottom: 18 }}>
-        <h2>Upload PDF</h2>
-        <form onSubmit={handleUpload} style={{ display: "grid", gap: 8 }}>
-          <input
-            ref={uploadRef}
-            type="file"
-            accept="application/pdf"
-            onChange={(event) => setPickedFile(event.target.files?.[0] ?? null)}
-          />
-          <button type="submit" disabled={uploading || !pickedFile}>
-            {uploading ? "Đang upload..." : "Tải lên PDF"}
-          </button>
-          {pickedFile ? <small>Chọn: {pickedFile.name}</small> : null}
-          {uploadError ? <p style={{ color: "#b91c1c" }}>{uploadError}</p> : null}
-        </form>
-      </section>
-
-      <section style={{ marginBottom: 18 }}>
-        <h2>Danh sách tài liệu</h2>
-        <div style={{ display: "grid", gap: 10 }}>
-          {documents.length === 0 ? (
-            <p>Chưa có tài liệu nào.</p>
-          ) : (
-            documents.map((document) => (
-              <div
-                key={document.id}
-                style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10 }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                  <strong>{document.filename}</strong>
-                  {statusChip(document.status)}
-                </div>
-                {document.error_message ? (
-                  <p style={{ color: "#991b1b", marginTop: 8 }}>{document.error_message}</p>
-                ) : null}
-                <small style={{ color: "#6b7280" }}>{document.size_bytes} bytes</small>
-                <div style={{ marginTop: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedDocumentId(document.id);
-                      setChapters([]);
-                    }}
-                  >
-                    Xem ghi chú theo chương
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
+    <main className="app-shell">
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">PDF Knowledge Base</p>
+          <h1>Vault đọc PDF</h1>
         </div>
-      </section>
+        <p className="topbar-meta">{documents.length} tài liệu · {documents.filter((doc) => doc.status === "ready").length} sẵn sàng</p>
+      </header>
 
-      <section style={{ marginBottom: 18 }}>
-        <h2>Ghi chú theo chương (kiến thức nền)</h2>
-        {!selectedDocumentId ? (
-          <p>Chọn một tài liệu để xem tóm tắt theo chương.</p>
-        ) : (
-          <>
-            <p>
-              Tài liệu: <strong>{documents.find((document) => document.id === selectedDocumentId)?.filename}</strong>
-            </p>
-            {chaptersError ? <p style={{ color: "#991b1b" }}>{chaptersError}</p> : null}
-            {chapters.length === 0 ? <p>Chưa có ghi chú chương hoặc chưa sẵn sàng.</p> : null}
+      <div className="layout">
+        <section className="panel library-panel">
+          <h2>Tài liệu</h2>
+          <form onSubmit={handleUpload} className="upload-form">
+            <input
+              ref={uploadRef}
+              type="file"
+              accept="application/pdf"
+              onChange={(event) => setPickedFile(event.target.files?.[0] ?? null)}
+            />
+            <button type="submit" disabled={uploading || !pickedFile}>{uploading ? "Đang đọc..." : "Tải PDF"}</button>
+            {pickedFile ? <small>{pickedFile.name}</small> : null}
+            {uploadError ? <p className="error-text">{uploadError}</p> : null}
+          </form>
+
+          <div className="document-list">
+            {documents.length === 0 ? <p className="muted">Chưa có tài liệu.</p> : null}
+            {documents.map((document) => (
+              <button
+                key={document.id}
+                type="button"
+                className={`doc-row ${document.id === selectedDocumentId ? "doc-row--active" : ""}`}
+                onClick={() => {
+                  setSelectedDocumentId(document.id);
+                  setChapters([]);
+                }}
+              >
+                <span>{document.filename}</span>
+                <small>{statusLabel(document.status)} · {formatBytes(document.size_bytes)}</small>
+                {document.error_message ? <small className="error-text">{document.error_message}</small> : null}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel notes-panel">
+          <div className="section-head">
+            <h2>Ghi chú</h2>
+            {selectedDocument ? <small>{selectedDocument.filename}</small> : null}
+          </div>
+          {!selectedDocumentId ? <p className="muted">Chọn một tài liệu để xem ghi chú markdown.</p> : null}
+          {chaptersError ? <p className="error-text">{chaptersError}</p> : null}
+          {selectedDocumentId && chapters.length === 0 ? <p className="muted">Chưa có ghi chú hoặc tài liệu đang xử lý.</p> : null}
+          <div className="chapter-list">
             {chapters.map((chapter) => (
-              <details key={`${chapter.document_id}-${chapter.chapter_index}`} style={{ marginBottom: 12 }}>
+              <details key={`${chapter.document_id}-${chapter.chapter_index}`} className="note">
                 <summary>
-                  {chapter.chapter_title} (trang {chapter.page_start ?? "?"}-{chapter.page_end ?? "?"})
+                  <span>{chapter.chapter_title}</span>
+                  <small>{chapter.page_start ?? "?"}-{chapter.page_end ?? "?"}</small>
                 </summary>
-                <pre style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{chapter.markdown}</pre>
+                <pre>{chapter.markdown}</pre>
               </details>
             ))}
-          </>
-        )}
-      </section>
+          </div>
+        </section>
 
-      <section>
-        <h2>Chat</h2>
-        <form onSubmit={handleChatSubmit} style={{ display: "grid", gap: 8 }}>
-          <textarea
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder="Nhập câu hỏi tiếng Việt hoặc tiếng Anh..."
-            rows={4}
-            style={{ resize: "vertical" }}
-          />
-          <button type="submit" disabled={isSending}>
-            {isSending ? "Đang sinh câu trả lời..." : "Gửi"}
-          </button>
-        </form>
+        <section className="panel chat-panel">
+          <h2>Hỏi đáp</h2>
+          <form onSubmit={handleChatSubmit} className="chat-form">
+            <textarea
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              placeholder="Hỏi tài liệu..."
+              rows={5}
+            />
+            <div className="actions">
+              <button type="button" onClick={handleVoiceInput} disabled={isSending}>{isRecording ? "Dừng ghi âm" : "Giọng nói"}</button>
+              <button type="submit" disabled={isSending}>{isSending ? "Đang trả lời..." : "Gửi"}</button>
+            </div>
+          </form>
 
-        <div style={{ marginTop: 12, minHeight: 80, whiteSpace: "pre-wrap" }}>
-          {streamedText || chatError ? <p>{chatError || streamedText}</p> : <p style={{ color: "#9ca3af" }}>Câu trả lời sẽ hiển thị tại đây.</p>}
-        </div>
+          <div className={`answer ${chatError ? "answer--error" : ""}`}>
+            {chatError || streamedText || "Câu trả lời sẽ hiện ở đây."}
+          </div>
 
-        <div style={{ marginBottom: 12 }}>
           {citations.length > 0 ? (
-            <>
-              <h3>Trích dẫn</h3>
-              <ul>
-                {citations.map((citation) => (
-                  <li key={`${citation.document_id}-${citation.page_start}-${citation.page_end}`}>
-                    {citation.filename} (trang {citation.page_start ?? "?"}-{citation.page_end ?? "?"})
-                  </li>
-                ))}
-              </ul>
-            </>
+            <div className="citations">
+              <h3>Nguồn</h3>
+              {citations.map((citation) => (
+                <p key={`${citation.document_id}-${citation.page_start}-${citation.page_end}`}>
+                  {citation.filename} · trang {citation.page_start ?? "?"}-{citation.page_end ?? "?"}
+                </p>
+              ))}
+            </div>
           ) : null}
-        </div>
 
-        <div>
-          <button type="button" onClick={() => audioUrl && playAssistantAudio(audioUrl)} disabled={!audioUrl}>
-            {audioUrl ? audioButtonLabel : "Không có audio"}
+          <button className="audio-button" type="button" onClick={() => audioUrl && playAssistantAudio(audioUrl)} disabled={!audioUrl}>
+            {audioUrl ? "Phát giọng đọc" : "Chưa có audio"}
           </button>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }
