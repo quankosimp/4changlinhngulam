@@ -1,0 +1,9 @@
+{"ts":"2026-06-27T07:17:31.910Z","hook":"descriptive-name","event":"PreToolUse","tool":"Write","target":"","note":"","dur":3,"status":"ok","exit":0,"error":""}
+{"ts":"2026-06-27T07:17:33.420Z","hook":"descriptive-name","event":"PreToolUse","tool":"Write","target":"","note":"","dur":3,"status":"ok","exit":0,"error":""}
+{"ts":"2026-06-27T07:17:34.066Z","hook":"privacy-block","event":"PreToolUse","tool":"","target":"","note":"json-parse-failed","dur":11,"status":"warn","exit":0,"error":"Unexpected token '﻿', \"﻿\" is not valid JSON"}
+{"ts":"2026-06-27T07:17:34.079Z","hook":"session-state","event":"unknown","tool":"","target":"","note":"skipped-no-session","dur":1,"status":"ok","exit":0,"error":""}
+{"ts":"2026-06-27T07:17:37.649Z","hook":"scout-block","event":"PreToolUse","tool":{},"target":"","note":"allowed-command","dur":1,"status":"ok","exit":0,"error":""}
+{"ts":"2026-06-27T07:18:15.509Z","hook":"scout-block","event":"PreToolUse","tool":"Bash","target":"","note":"","dur":6,"status":"ok","exit":0,"error":""}
+{"ts":"2026-06-27T07:18:16.075Z","hook":"privacy-block","event":"PreToolUse","tool":"Read","target":"","note":"","dur":5,"status":"ok","exit":0,"error":""}
+{"ts":"2026-06-27T07:18:16.086Z","hook":"session-state","event":"PostToolUse","tool":"","target":"","note":"handled","dur":44,"status":"ok","exit":0,"error":""}
+{"ts":"2026-06-27T07:18:17.660Z","hook":"session-init","event":"SessionStart","tool":"","target":"","note":"unknown","dur":1770,"status":"ok","exit":0,"error":""}
